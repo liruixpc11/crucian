@@ -1,20 +1,21 @@
 package crucian.benchmark.benchmarks;
 
 import crucian.benchmark.*;
+import crucian.benchmark.algorithms.BasicCoarsenedMappingAlgorithm;
 import crucian.benchmark.generators.NetworkGenerator;
 import crucian.benchmark.generators.RandomGtItmSubstrateNetworkGenerator;
 import crucian.benchmark.generators.RandomGtItmVirtualNetworkGenerator;
 import crucian.benchmark.metrics.*;
+import crucian.benchmark.simulator.*;
 import crucian.benchmark.simulator.Event;
-import crucian.benchmark.simulator.Simulator;
-import crucian.benchmark.simulator.SimulatorListener;
+import crucian.benchmark.simulator.plugins.ResultDumpPlugin;
 import vnreal.ToolKit;
 import vnreal.gui.GUI;
 import vnreal.network.NetworkStack;
 import vnreal.network.substrate.SubstrateNetwork;
 import vnreal.network.virtual.VirtualNetwork;
 
-import java.awt.*;
+import java.awt.EventQueue;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -44,6 +45,7 @@ public class QualityBenchmark extends AbstractBenchmark implements ITimeStatsPro
     private double minSResource;
     private double maxSResource;
     private boolean useSubstrateInStack = false;
+    private String simulatorName;
 
     // counters
     private int acceptCount = 0;
@@ -54,6 +56,8 @@ public class QualityBenchmark extends AbstractBenchmark implements ITimeStatsPro
     private long totalRejectNanoseconds;
     private double totalRevenue = 0;
     private double totalCost = 0;
+    private double coarsenRate = 0;
+    private double coarsenTimeRate = 0;
 
     // policies
     private NetworkGenerator<VirtualNetwork> virtualNetworkGenerator;
@@ -139,6 +143,7 @@ public class QualityBenchmark extends AbstractBenchmark implements ITimeStatsPro
             if (event.getType().equals(Event.Type.Arrive)) {
                 totalAcceptNanoseconds += System.nanoTime() - mapStartNanoseconds;
                 currentSimulatorTime = event.getTime();
+                updateCoarsenStats(simulator.getMappingAlgorithm());
                 simulator.getEventQueue().enqueue(new Event(Event.Type.Depart,
                         event.getTime() + randomUtility.nextInt(2 * ageSigma + 1) + avgAge - ageSigma,
                         event.getVirtualNetwork()));
@@ -157,9 +162,21 @@ public class QualityBenchmark extends AbstractBenchmark implements ITimeStatsPro
             if (event.getType().equals(Event.Type.Arrive)) {
                 totalRejectNanoseconds += System.nanoTime() - mapStartNanoseconds;
                 currentSimulatorTime = event.getTime();
+                updateCoarsenStats(simulator.getMappingAlgorithm());
                 rejectCount++;
                 updateStats();
                 cause.printStackTrace();
+            }
+        }
+
+        private void updateCoarsenStats(MappingAlgorithm mappingAlgorithm) {
+            if (BasicCoarsenedMappingAlgorithm.class.isAssignableFrom(mappingAlgorithm.getClass())) {
+                BasicCoarsenedMappingAlgorithm algorithm = ((BasicCoarsenedMappingAlgorithm) mappingAlgorithm);
+                coarsenRate += algorithm.getCoarseningRate();
+                coarsenTimeRate += (double) (algorithm.getMapTime() - algorithm.getCoarsenTime())
+                        / (algorithm.getUncoarsenTime() - algorithm.getStartTime());
+            } else {
+                coarsenRate += 1;
             }
         }
 
@@ -182,14 +199,17 @@ public class QualityBenchmark extends AbstractBenchmark implements ITimeStatsPro
                 EventQueue.invokeLater(new Runnable() {
                     @Override
                     public void run() {
+                        long totalCount = acceptCount + rejectCount;
                         putStatus("总映射时间（s）", (double) (totalAcceptNanoseconds + totalRejectNanoseconds) / nanoPerSecond);
                         putStatus("成功次数", acceptCount, acceptCount + rejectCount);
                         putStatus("成功总时间（s）", (double) totalAcceptNanoseconds / nanoPerSecond);
                         putStatus("失败总时间（s）", (double) totalRejectNanoseconds / nanoPerSecond);
                         putStatus(QualityMetrics.avgTime, "平均映射时间（s/个）", (double) (totalAcceptNanoseconds + totalRejectNanoseconds) / ((acceptCount + rejectCount) * nanoPerSecond));
-                        putStatus("生存请求数量", requestInQueue.get(), requestInQueue.get());
+                        putStatus(QualityMetrics.vnCount, "生存请求数量", requestInQueue.get(), requestInQueue.get());
                         putStatus(QualityMetrics.acceptRate, "接受率", (acceptCount * 100.0) / (acceptCount + rejectCount));
                         putStatus(QualityMetrics.revenue, "累计收益", totalRevenue, totalCost);
+                        putStatus(QualityMetrics.coarsenRate, "粗化率", coarsenRate / totalCount, 1);
+                        putStatus(QualityMetrics.coarsenTimeRate, "粗化时间比例", coarsenTimeRate / totalCount, 1);
                         putStatus(metricResultMap);
                         for (StatusDisplayable statusDisplayable : displayableList) {
                             try {
@@ -218,7 +238,8 @@ public class QualityBenchmark extends AbstractBenchmark implements ITimeStatsPro
                                           @BenchmarkParam("SN边数量") @DefaultValue("500") int substrateEdgeCount,
                                           @BenchmarkParam("SN最小资源") @DefaultValue("80") double minSResource,
                                           @BenchmarkParam("SN最大资源") @DefaultValue("100") double maxSResource,
-                                          @BenchmarkParam("是否使用网络栈中的底层网络") @DefaultValue("false") boolean useSubstrateInStack
+                                          @BenchmarkParam("是否使用网络栈中的底层网络") @DefaultValue("false") boolean useSubstrateInStack,
+                                          @BenchmarkParam("模拟器标志，方便获取文件结果") @DefaultValue("") String simulatorName
     ) {
         QualityBenchmark benchmark = new QualityBenchmark();
         benchmark.maxTime = maxTime;
@@ -235,6 +256,7 @@ public class QualityBenchmark extends AbstractBenchmark implements ITimeStatsPro
         benchmark.minSResource = minSResource;
         benchmark.maxSResource = maxSResource;
         benchmark.useSubstrateInStack = useSubstrateInStack;
+        benchmark.simulatorName = simulatorName;
         benchmark.virtualNetworkGenerator =
                 new RandomGtItmVirtualNetworkGenerator(minNodeCount, maxNodeCount, connectProbability, minResourceDemand, maxResourceDemand);
         //new WaxmanVirtualNetworkGenerator(minNodeCount, maxNodeCount, 0.1, minResourceDemand, maxResourceDemand)
@@ -265,7 +287,10 @@ public class QualityBenchmark extends AbstractBenchmark implements ITimeStatsPro
         }
 
         System.out.println("底层节点数: " + substrateNetwork.getVertexCount() + "\n底层连接数: " + substrateNetwork.getEdgeCount());
-        Simulator simulator = new Simulator(new Listener(), substrateNetwork);
+        Simulator simulator = SimulatorFactory.create(simulatorName,
+                new Listener(),
+                substrateNetwork,
+                new ResultDumpPlugin("performance"));
         simulator.setMappingAlgorithm(mappingAlgorithm);
         for (StatusDisplayable statusDisplayable : displayableList) {
             statusDisplayable.setAlgorithmName(mappingAlgorithm.getClass().getSimpleName());

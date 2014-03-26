@@ -9,6 +9,10 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 
 /**
  * Created at 14-3-4 上午9:42.
@@ -44,7 +48,9 @@ public abstract class AbstractNetworkLoader<T extends AbstractConstraint, V exte
             int bytes = buffer.length;
             while (bytes == buffer.length) {
                 bytes = inputStreamReader.read(buffer, 0, buffer.length);
-                sb.append(buffer, 0, bytes);
+                if (bytes > 0) {
+                    sb.append(buffer, 0, bytes);
+                }
             }
 
             content = sb.toString();
@@ -57,15 +63,9 @@ public abstract class AbstractNetworkLoader<T extends AbstractConstraint, V exte
     }
 
     public Network<T, V, L> loadFromFile(String fileName) throws Exception {
-        FileInputStream fileInputStream = null;
-        try {
-            fileInputStream = new FileInputStream(fileName);
+        try (FileInputStream fileInputStream = new FileInputStream(fileName)) {
             return load(fileInputStream);
-        } finally {
-            if (fileInputStream != null) try {
-                fileInputStream.close();
-            } catch (IOException ignored) {
-            }
         }
+        // return load(Charset.forName("UTF-8").decode(ByteBuffer.wrap(Files.readAllBytes(Paths.get(fileName)))));
     }
 }

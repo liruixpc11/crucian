@@ -27,6 +27,7 @@ import java.util.*;
 public class BasicCoarsening implements VirtualNetworkCoarsening {
     private boolean useLog = false;
     private boolean supportCluster = false;
+    private boolean useAverageThreshold = false;
 
     // performance counters
     private long startTime;
@@ -63,6 +64,14 @@ public class BasicCoarsening implements VirtualNetworkCoarsening {
 
     public long getCombineTime() {
         return combineTime;
+    }
+
+    public boolean isUseAverageThreshold() {
+        return useAverageThreshold;
+    }
+
+    public void setUseAverageThreshold(boolean useAverageThreshold) {
+        this.useAverageThreshold = useAverageThreshold;
     }
 
     private static class VirtualNodePair {
@@ -109,9 +118,8 @@ public class BasicCoarsening implements VirtualNetworkCoarsening {
             // log(String.format("bandwidth threshold: %f", thresholdBandwidth));
         }
 
-        public boolean canCombine(VirtualLink virtualLink) {
-            VirtualNode node1 = coarsenedVirtualNetwork.getSource(virtualLink);
-            VirtualNode node2 = coarsenedVirtualNetwork.getDest(virtualLink);
+        public boolean canCombine(VirtualNode node1, VirtualNode node2) {
+            VirtualLink virtualLink = findEdge(coarsenedVirtualNetwork, node1, node2);
             if (adjacentBandwidthMap.get(node1) + adjacentBandwidthMap.get(node2) - 2 * queryBandwidth(virtualLink) > thresholdBandwidth) {
                 log("not enough bandwidth");
                 return false;
@@ -128,6 +136,16 @@ public class BasicCoarsening implements VirtualNetworkCoarsening {
             }
 
             return true;
+        }
+
+        private VirtualLink findEdge(VirtualNetwork virtualNetwork, VirtualNode node1, VirtualNode node2) {
+            for (VirtualLink virtualLink : virtualNetwork.getIncidentEdges(node1)) {
+                if (virtualNetwork.getSource(virtualLink) == node2 || virtualNetwork.getDest(virtualLink) == node2) {
+                    return virtualLink;
+                }
+            }
+
+            return null;
         }
 
         private void updateThresholds() {
@@ -165,10 +183,24 @@ public class BasicCoarsening implements VirtualNetworkCoarsening {
 
             Arrays.sort(cpuList);
             Arrays.sort(bandwidthList);
-            thresholdCpu = cpuList[cpuList.length / 2];
-            thresholdBandwidth = bandwidthList[bandwidthList.length / 2];
+            if (useAverageThreshold) {
+                thresholdCpu = averageList(cpuList);
+                thresholdBandwidth = averageList(bandwidthList);
+            } else {
+                thresholdCpu = cpuList[cpuList.length / 2];
+                thresholdBandwidth = bandwidthList[bandwidthList.length / 2];
+            }
             maxCpu = cpuList[cpuList.length - 1];
             maxBandwidth = bandwidthList[bandwidthList.length - 1];
+        }
+
+        private double averageList(double[] list) {
+            double total = 0;
+            for (double d : list) {
+                total += d;
+            }
+
+            return total / list.length;
         }
 
         private void updateAdjacentBandwidthMap() {
@@ -287,12 +319,22 @@ public class BasicCoarsening implements VirtualNetworkCoarsening {
                 // 两个粗化节点就不能再合并了
                 node1 = coarsenMetric.originalVirtualNetwork.getSource(virtualLink);
                 node2 = coarsenMetric.originalVirtualNetwork.getDest(virtualLink);
+                if (coarsenMetric.coarsenMap.containsKey(node1)) {
+                    node1 = coarsenMetric.coarsenMap.get(node1);
+                }
+                if (coarsenMetric.coarsenMap.containsKey(node2)) {
+                    node2 = coarsenMetric.coarsenMap.get(node2);
+                }
             } else {
                 node1 = coarsened.getSource(virtualLink);
                 node2 = coarsened.getDest(virtualLink);
             }
 
-            if (!coarsenMetric.canCombine(virtualLink)) {
+            if (node1 == node2) {
+                continue;
+            }
+
+            if (!coarsenMetric.canCombine(node1, node2)) {
                 continue;
             }
 
@@ -305,24 +347,40 @@ public class BasicCoarsening implements VirtualNetworkCoarsening {
     private CoarsenVirtualNode combineNodes(CoarsenMetric coarsenMetric,
                                             CoarsenedVirtualNetwork coarsened,
                                             Map<VirtualNode, List<VirtualLink>> linksOfNode,
-                                            VirtualLink virtualLink, VirtualNode node1, VirtualNode node2) {
-        // 合并节点
-        CoarsenVirtualNode coarsenVirtualNode = new CoarsenVirtualNode(NetworkEntity.allocateId(), new VirtualNode[]{node1, node2});
+                                            VirtualLink virtualLink,
+                                            VirtualNode node1, VirtualNode node2) {
+        // 1. 合并节点
+        List<VirtualNode> subNodes = new ArrayList<>();
+        if (isCoarsenNodeOfCurrent(coarsened, node1)) {
+            subNodes.addAll(((CoarsenVirtualNode) node1).getAllSub());
+        } else {
+            subNodes.add(node1);
+        }
+
+        if (isCoarsenNodeOfCurrent(coarsened, node2)) {
+            subNodes.addAll(((CoarsenVirtualNode) node2).getAllSub());
+        } else {
+            subNodes.add(node2);
+        }
+
+        CoarsenVirtualNode coarsenVirtualNode = new CoarsenVirtualNode(NetworkEntity.allocateId(), subNodes.toArray(new VirtualNode[subNodes.size()]));
         coarsenVirtualNode.setCoarsenLevel(coarsened.getCoarsenLevel());
-        coarsenMetric.coarsenMap.put(node1, coarsenVirtualNode);
-        coarsenMetric.coarsenMap.put(node2, coarsenVirtualNode);
+        for (VirtualNode subNode : subNodes) {
+            coarsenMetric.coarsenMap.put(subNode, coarsenVirtualNode);
+        }
+
         coarsened.addVertex(coarsenVirtualNode);
         coarsened.removeEdge(virtualLink);
         // log(String.format("合并节点%s,%s", node1.getId(), node2.getId()));
 
         // TODO 处理合并粗化节点和粗化连接的情况
-        // 合并连接
+        // 2. 合并连接
         linksOfNode.clear();
         handleLinksOfNode(node1, coarsened, linksOfNode, node2);
         handleLinksOfNode(node2, coarsened, linksOfNode, node1);
+
         for (VirtualNode virtualNode : linksOfNode.keySet()) {
             List<VirtualLink> links = linksOfNode.get(virtualNode);
-
             CoarsenVirtualLink coarsenVirtualLink = new CoarsenVirtualLink(NetworkEntity.allocateId(),
                     links.toArray(new VirtualLink[links.size()]));
             // log("合并连接: " + list2String(links));
@@ -363,25 +421,46 @@ public class BasicCoarsening implements VirtualNetworkCoarsening {
         this.useLog = useLog;
     }
 
+    private boolean isCoarsenNodeOfCurrent(CoarsenedVirtualNetwork coarsened, VirtualNode node) {
+        return node instanceof CoarsenVirtualNode && ((CoarsenVirtualNode) node).getCoarsenLevel() == coarsened.getCoarsenLevel();
+    }
+
+    private boolean isCoarsenLinkOfCurrent(CoarsenedVirtualNetwork coarsened, VirtualLink link) {
+        return link instanceof CoarsenVirtualLink && ((CoarsenVirtualLink) link).getCoarsenLevel() == coarsened.getCoarsenLevel();
+    }
+
     private void handleLinksOfNode(VirtualNode node1, CoarsenedVirtualNetwork coarsened, Map<VirtualNode, List<VirtualLink>> linksOfNode, VirtualNode node2) {
+        // 合并节点
         for (VirtualLink linkOfNode : new ArrayList<VirtualLink>(coarsened.getInEdges(node1))) {
             VirtualNode anotherNode = coarsened.getSource(linkOfNode);
-            coarsened.removeEdge(linkOfNode);
             if (anotherNode == node2) {
                 // another link connects these two nodes, just remove it
+                coarsened.removeEdge(linkOfNode);
                 continue;
             }
 
-            addTo(linksOfNode, anotherNode, linkOfNode);
+            addTo(coarsened, linksOfNode, linkOfNode, anotherNode);
+            coarsened.removeEdge(linkOfNode);
         }
 
         for (VirtualLink linkOfNode : new ArrayList<VirtualLink>(coarsened.getOutEdges(node1))) {
             VirtualNode anotherNode = coarsened.getDest(linkOfNode);
-            coarsened.removeEdge(linkOfNode);
             if (anotherNode == node2) {
+                coarsened.removeEdge(linkOfNode);
                 continue;
             }
 
+            addTo(coarsened, linksOfNode, linkOfNode, anotherNode);
+            coarsened.removeEdge(linkOfNode);
+        }
+    }
+
+    private void addTo(CoarsenedVirtualNetwork coarsened, Map<VirtualNode, List<VirtualLink>> linksOfNode, VirtualLink linkOfNode, VirtualNode anotherNode) {
+        if (isCoarsenLinkOfCurrent(coarsened, linkOfNode)) {
+            for (VirtualLink virtualLink : ((CoarsenVirtualLink) linkOfNode).getAllSub()) {
+                addTo(linksOfNode, anotherNode, linkOfNode);
+            }
+        } else {
             addTo(linksOfNode, anotherNode, linkOfNode);
         }
     }
@@ -389,7 +468,7 @@ public class BasicCoarsening implements VirtualNetworkCoarsening {
     private void addTo(Map<VirtualNode, List<VirtualLink>> linksOfNode, VirtualNode anotherNode, VirtualLink linkOfNode) {
         List<VirtualLink> links = linksOfNode.get(anotherNode);
         if (links == null) {
-            links = new ArrayList<VirtualLink>();
+            links = new ArrayList<>();
             linksOfNode.put(anotherNode, links);
         }
 
@@ -457,7 +536,7 @@ public class BasicCoarsening implements VirtualNetworkCoarsening {
                     substrateNode.add(lbResource);
                 }
 
-                Set<VirtualNode> subNodes = new HashSet<VirtualNode>(coarsenNode.getAllSub());
+                Set<VirtualNode> subNodes = new HashSet<>(coarsenNode.getAllSub());
                 for (VirtualNode subNode : subNodes) {
                     // 处理内部连接，由于内部节点两端都在内部，所以只要遍历一侧就可以了
                     for (VirtualLink link : originalNetwork.getInEdges(subNode)) {
@@ -520,7 +599,8 @@ public class BasicCoarsening implements VirtualNetworkCoarsening {
 
     public static void main(String[] args) throws Exception {
         BasicCoarsening coarsening = new BasicCoarsening();
-        VirtualNetwork virtualNetwork = new RandomGtItmVirtualNetworkGenerator(2, 2, 0.1, 5, 10).create();
+        coarsening.setSupportCluster(true);
+        VirtualNetwork virtualNetwork = new RandomGtItmVirtualNetworkGenerator(4, 4, 1, 5, 10).create();
         SubstrateNetwork substrateNetwork = new RandomGtItmSubstrateNetworkGenerator(10, 10, 1, 80, 100).create();
         MappingAlgorithm mappingAlgorithm = new IsomorphismAlgorithm();
         VirtualNetwork coarsened = coarsening.coarsen(virtualNetwork, substrateNetwork);

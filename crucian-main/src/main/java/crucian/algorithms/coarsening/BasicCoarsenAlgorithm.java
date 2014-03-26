@@ -10,6 +10,7 @@ import java.util.List;
 public class BasicCoarsenAlgorithm extends AbstractCoarsenAlgorithm {
     private SingleNetworkMappingAlgorithm mapAlgorithm;
     private VirtualNetworkCoarsening coarsening;
+    private boolean useAverageThreshold = false;
 
     protected BasicCoarsenAlgorithm(NetworkStack networkStack,
                                     SingleNetworkMappingAlgorithm mapAlgorithm,
@@ -17,6 +18,14 @@ public class BasicCoarsenAlgorithm extends AbstractCoarsenAlgorithm {
         super(networkStack);
         this.mapAlgorithm = mapAlgorithm;
         this.coarsening = coarsening;
+    }
+
+    public boolean isUseAverageThreshold() {
+        return useAverageThreshold;
+    }
+
+    public void setUseAverageThreshold(boolean useAverageThreshold) {
+        this.useAverageThreshold = useAverageThreshold;
     }
 
     @Override

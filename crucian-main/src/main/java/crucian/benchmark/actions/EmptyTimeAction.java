@@ -16,9 +16,9 @@ import java.awt.event.ActionEvent;
  * @author LiRuiNet
  *         14-2-28 下午3:28
  */
-public class DemoAction extends AbstractAction {
-    public DemoAction() {
-        super("简单测试");
+public class EmptyTimeAction extends AbstractAction {
+    public EmptyTimeAction() {
+        super("空载时间测试");
     }
 
     @Override

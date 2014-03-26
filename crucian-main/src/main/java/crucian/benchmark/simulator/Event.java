@@ -19,6 +19,11 @@ public class Event {
         this.virtualNetwork = virtualNetwork;
     }
 
+    public void setError(Exception cause) {
+        this.success = false;
+        this.cause = cause;
+    }
+
     public Type getType() {
         return type;
     }
@@ -29,6 +34,30 @@ public class Event {
 
     public VirtualNetwork getVirtualNetwork() {
         return virtualNetwork;
+    }
+
+    public long getHandleNanoseconds() {
+        return handleNanoseconds;
+    }
+
+    public void setHandleNanoseconds(long handleNanoseconds) {
+        this.handleNanoseconds = handleNanoseconds;
+    }
+
+    public boolean isSuccess() {
+        return success;
+    }
+
+    public void setSuccess(boolean success) {
+        this.success = success;
+    }
+
+    public Exception getCause() {
+        return cause;
+    }
+
+    public void setCause(Exception cause) {
+        this.cause = cause;
     }
 
     @Override
@@ -43,4 +72,7 @@ public class Event {
     private Type type;
     private int time;
     private VirtualNetwork virtualNetwork;
+    private long handleNanoseconds;
+    private boolean success;
+    private Exception cause;
 }

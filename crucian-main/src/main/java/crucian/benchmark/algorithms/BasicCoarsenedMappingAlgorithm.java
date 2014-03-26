@@ -11,19 +11,55 @@ import vnreal.network.virtual.VirtualNetwork;
  *         14-3-2 下午9:24
  */
 public abstract class BasicCoarsenedMappingAlgorithm extends AbstractMappingAlgorithm {
-    private VirtualNetworkCoarsening coarsening = getCoarsening();
+    private VirtualNetworkCoarsening coarsening;
     private double coarseningRate = 1;
+    private long startTime;
+    private long coarsenTime;
+    private long mapTime;
+    private long uncoarsenTime;
 
-    protected VirtualNetworkCoarsening getCoarsening() {
+    protected VirtualNetworkCoarsening createCoarsening() {
         return new BasicCoarsening();
+    }
+
+    private VirtualNetworkCoarsening getCoarsening() {
+        if (coarsening == null) {
+            return coarsening = createCoarsening();
+        }
+
+        return coarsening;
     }
 
     @Override
     public final void map(SubstrateNetwork substrateNetwork, VirtualNetwork virtualNetwork) throws Exception {
-        VirtualNetwork coarsenedVirtualNetwork = coarsening.coarsen(virtualNetwork, substrateNetwork);
+        startTime = System.nanoTime();
+        VirtualNetwork coarsenedVirtualNetwork = getCoarsening().coarsen(virtualNetwork, substrateNetwork);
+        coarsenTime = System.nanoTime();
+        coarseningRate = (double) coarsenedVirtualNetwork.getVertexCount() / virtualNetwork.getVertexCount();
         doMap(substrateNetwork, coarsenedVirtualNetwork);
-        coarseningRate = coarsenedVirtualNetwork.getVertexCount() / (double) virtualNetwork.getVertexCount();
+        mapTime = System.nanoTime();
         coarsening.undoCoarsen(coarsenedVirtualNetwork);
+        uncoarsenTime = System.nanoTime();
+    }
+
+    public double getCoarseningRate() {
+        return coarseningRate;
+    }
+
+    public long getStartTime() {
+        return startTime;
+    }
+
+    public long getCoarsenTime() {
+        return coarsenTime;
+    }
+
+    public long getMapTime() {
+        return mapTime;
+    }
+
+    public long getUncoarsenTime() {
+        return uncoarsenTime;
     }
 
     protected abstract void doMap(SubstrateNetwork substrateNetwork, VirtualNetwork virtualNetwork) throws Exception;

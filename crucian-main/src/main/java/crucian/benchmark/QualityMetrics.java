@@ -12,4 +12,7 @@ public class QualityMetrics {
     public static final String virtualCost = "virtualCost";
     public static final String revenueCostRate = "revenueCostRate";
     public static final String avgTime = "avgTime";
+    public static final String coarsenRate = "coarsenRate";
+    public static final String vnCount = "vnCount";
+    public static final String coarsenTimeRate = "coarsenTimeRate";
 }

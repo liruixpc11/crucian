@@ -96,8 +96,7 @@ public abstract class AbstractNodeMapping {
         List<SubstrateNode> mappedSnodes = new LinkedList<SubstrateNode>();
 
         // In this loop the virtual nodes with ID demand are analyzed
-        for (Iterator<VirtualNode> vn = vNet.getVertices().iterator(); vn
-                .hasNext(); ) {
+        for (Iterator<VirtualNode> vn = vNet.getVertices().iterator(); vn.hasNext(); ) {
             VirtualNode tmp = vn.next();
             for (AbstractDemand dem : tmp) {
                 if (dem instanceof IdDemand) {

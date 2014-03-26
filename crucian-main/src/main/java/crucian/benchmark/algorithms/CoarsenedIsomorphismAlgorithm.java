@@ -17,18 +17,28 @@ import vnreal.network.virtual.VirtualNetwork;
 @AlgorithmAction("Coarsened Isomorphism")
 public class CoarsenedIsomorphismAlgorithm extends BasicCoarsenedMappingAlgorithm {
     private boolean useLog;
+    private boolean useAverageThreshold;
+    private boolean supportCluster;
 
     @Override
-    protected VirtualNetworkCoarsening getCoarsening() {
+    protected VirtualNetworkCoarsening createCoarsening() {
         BasicCoarsening coarsening = new BasicCoarsening();
         coarsening.useLog(useLog);
+        coarsening.setUseAverageThreshold(useAverageThreshold);
+        coarsening.setSupportCluster(supportCluster);
         return coarsening;
     }
 
     @AlgorithmFactory
-    public static CoarsenedIsomorphismAlgorithm create(@AlgorithmParam("是否输出日志") @DefaultValue("True") boolean useLog) {
+    public static CoarsenedIsomorphismAlgorithm create(
+            @AlgorithmParam("是否输出日志") @DefaultValue("False") boolean useLog,
+            @AlgorithmParam("是否使用平均值作为阈值") @DefaultValue("False") boolean useAverageThreshold,
+            @AlgorithmParam("是否支持聚合粗化") @DefaultValue("False") boolean supportCluster
+    ) {
         CoarsenedIsomorphismAlgorithm algorithm = new CoarsenedIsomorphismAlgorithm();
         algorithm.useLog = useLog;
+        algorithm.useAverageThreshold = useAverageThreshold;
+        algorithm.supportCluster = supportCluster;
         return algorithm;
     }
 

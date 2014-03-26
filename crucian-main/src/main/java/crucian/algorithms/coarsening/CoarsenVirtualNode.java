@@ -61,6 +61,6 @@ public class CoarsenVirtualNode extends VirtualNode implements CoarsenEntity<Vir
         for (VirtualNode virtualNode : getAllSub()) {
             subIds.add(Integer.toString(virtualNode.getId()));
         }
-        return String.format("VirtualNetwork(%d)[%s]@(%d)", getId(), StringUtils.join(subIds, ","), getLayer());
+        return String.format("VirtualNode(%d)[%s]@(%d)", getId(), StringUtils.join(subIds, ","), getLayer());
     }
 }
